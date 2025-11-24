@@ -2,7 +2,7 @@
     <div>
         <div class="tabs-container relative" v-if="isMainTab">
             <div role="tablist" class="tabs flex-1 flex space-x-3 overflow-auto pr-6">
-                <button v-for="tab, index in tabs" role="tab" class="tab-button" :class="{ active: tab.active, hidden: tab.hidden }" @click="setTabActive(index)">
+                <button v-for="(tab, index) in tabs" role="tab" class="tab-button" :class="{ active: tab.active, hidden: tab.hidden }" @click="setTabActive(index)">
                     <iconify-icon v-if="tab.iconify_icon" :icon="tab.iconify_icon" class="h-4 w-4 text-lg mr-2" />
                     <svg-icon v-else-if="tab.icon" :name="tab.icon" class="h-4 w-4 mr-2" />
                     {{ __(tab.name) }}
@@ -10,7 +10,7 @@
             </div>
         </div>
 
-        <div role="tabpanel" v-for="tab, index in tabs" class="tabpanel" :class="{ block: tab.active, hidden: !tab.active }" :id="'tab-content-' + tab.id">
+        <div role="tabpanel" v-for="(tab, index) in tabs" class="tabpanel" :class="{ block: tab.active, hidden: !tab.active }" :id="'tab-content-' + tab.id">
             <div :style="tabPanelStyle">
                 <div class="publish-fields @container w-full"></div>
             </div>
@@ -53,6 +53,38 @@ export default {
     },
 
     methods: {
+        getTabContainerById(id) {
+            if (!id) return null;
+            const container = document.getElementById('tab-content-' + id);
+            if (!container) return null;
+            const publishFields = container.querySelector('.publish-fields');
+            return publishFields || container; // fallback to container
+        },
+        safeAppendToTab(id, element) {
+            try {
+                const container = this.getTabContainerById(id);
+                if (!container || !element) return;
+                if (element === container || element.contains(container)) return;
+                if (element.parentNode === container) return; // already there
+                container.appendChild(element);
+            } catch (e) {
+                // Swallow DOM errors like NotFoundError when targets move during DnD
+                // console.warn('safeAppendToTab failed', e);
+            }
+        },
+        safePrependToTab(id, element) {
+            try {
+                const container = this.getTabContainerById(id);
+                if (!container || !element) return;
+                if (element === container || element.contains(container)) return;
+                if (element.parentNode === container && container.firstChild === element) return; // already first
+                const ref = container.firstChild || null;
+                // insertBefore handles null as append
+                container.insertBefore(element, ref);
+            } catch (e) {
+                // console.warn('safePrependToTab failed', e);
+            }
+        },
         setTabActive(index) {
             this.tabs.forEach((tab, i) => {
                 tab.active = i === index
@@ -97,7 +129,7 @@ export default {
     },
 
     mounted() {
-
+        console.log("Änderungen sind angekommen");
         this.isMainTab = this.checkIfFirstSibling()
 
         /** Setup main tab */
@@ -127,9 +159,10 @@ export default {
             const instructions = this.$el.closest('.publish-field').querySelector('.help-block')
             if (instructions) {
                 if (this.isMainTab) {
-                    document.getElementById('tab-content-' + this.tabs[0].id).prepend(instructions)
+                    const firstTabId = this.tabs[0] ? this.tabs[0].id : null
+                    this.safePrependToTab(firstTabId, instructions)
                     this.$events.$on('tabs.prepend-instructions-' + this.tab.id, (element, id) => {
-                        document.getElementById('tab-content-' + id).prepend(element)
+                        this.safePrependToTab(id, element)
                     })
                 } else {
                     this.$events.$emit('tabs.prepend-instructions-' + this.mainTab.dataset.uniqid, instructions, this.tab.id)
@@ -154,11 +187,12 @@ export default {
         this.$nextTick(() => {
             if (this.isMainTab) {
                 nextSiblings.forEach((nextSibling) => {
-                    document.getElementById('tab-content-' + this.tabs[0].id).querySelector('.publish-fields').appendChild(nextSibling)
+                    const firstTabId = this.tabs[0] ? this.tabs[0].id : null
+                    this.safeAppendToTab(firstTabId, nextSibling)
                 })
-    
+
                 this.$events.$on('tabs.append-' + this.tab.id, (element, id) => {
-                    document.getElementById('tab-content-' + id).querySelector('.publish-fields').appendChild(element)
+                    this.safeAppendToTab(id, element)
                 })
             } else {
                 nextSiblings.forEach((nextSibling) => {
